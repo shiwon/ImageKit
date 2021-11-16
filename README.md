@@ -1,6 +1,6 @@
 # process image for writing document
 ## function
-- cropping
+- crop Image
 - get some calculated metrics
     - PSNR
     - SSIM
