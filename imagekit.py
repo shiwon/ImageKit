@@ -94,6 +94,64 @@ def get_crop_image(src_path,start_point=(0,0),size=(100,100)):
     dst=src.crop((start_point[0],start_point[1],start_point[0]+size[0],start_point[1]+size[1]))
     return dst
 
+import re
+class ResizeWindow:
+    def __init__(self,src_path):
+        self.src_path=src_path
+        self.src_image=Image.open(src_path)
+        self.w,self.h=self.src_image.size
+        self.view_size=(400,400)
+        self.layout=self.set_layout()
+        self.window=sg.Window('resize window', self.layout, return_keyboard_events=True)
+    def set_layout(self):
+        col_input_size=[sg.Text(f'input image     width:{self.w} height:{self.h}')]
+        col_output_size=[sg.Text('output image     width:'),sg.InputText(size=(5,1),enable_events=True ,key='-WIDTH-'),sg.Text('height:'),sg.InputText(size=(5,1),enable_events=True ,key='-HEIGHT-')]
+        col_buttons=[sg.Button('save',key='-SAVE-'),sg.Button('cancel',key='-CANCEL-')]
+        
+        self.view_elem=sg.Image(data=get_img_data(self.src_path,self.view_size,True),key='-IMAGE-')
+        col_view=[self.view_elem]
+
+        left_cols=sg.Column([col_input_size,col_output_size,col_buttons])
+        right_cols=sg.Column([col_view])
+        
+        return [[left_cols,right_cols]]
+    def update_view(self):
+        view_image = self.src_image.resize((self.w,self.h))
+        view_image.thumbnail(self.view_size)
+        bio = io.BytesIO()
+        view_image.save(bio, format="PNG")
+        del view_image
+        self.view_elem.update(data=bio.getvalue())
+    
+    def popup(self):
+        while True:
+            event,values=self.window.read()
+
+            if event in ('-CANCEL-',None):
+                break
+            elif event=='-WIDTH-':
+                if not (values['-WIDTH-'].isdecimal() and values['-WIDTH-'].isascii()):
+                    self.window['-WIDTH-'].update(re.sub(r'\D','',values['-WIDTH-']))
+                else:
+                    self.w=int(values['-WIDTH-'])
+                    self.update_view()
+            elif event=='-HEIGHT-':
+                if not (values['-HEIGHT-'].isdecimal() and values['-HEIGHT-'].isascii()):
+                    self.window['-HEIGHT-'].update(re.sub(r'\D','',values['-HEIGHT-']))
+                else:
+                    self.h=int(values['-HEIGHT-'])
+                    self.update_view()
+            elif event=='-SAVE-':
+                if self.w and self.h:
+                    default_path=f'{os.path.dirname(self.src_path)}/resized_{os.path.basename(self.src_path)}'
+                    dstpath=sg.popup_get_file('save',save_as=True,default_path=default_path)
+                    self.src_image.resize((self.w,self.h)).save(dstpath)
+                    break
+        self.window.close()
+
+
+
+
 if __name__=="__main__":
     metric_result_path='metrics.csv'
     gt_graph_size=(576,324)
@@ -131,6 +189,7 @@ if __name__=="__main__":
     col_read_file=[sg.InputText('ファイルを選択', key='-INPUT-TEXT-', enable_events=True, ),
                  sg.FileBrowse('Ground Truth 画像を読み込む', key='-GT-FILE-',target='-INPUT-TEXT-',file_types=(('png', '*.png'),)),
                  sg.Button('選択した範囲にクロッピング',key='-CROP-'),
+                 sg.Button('リサイズして保存',key='-RESIZE-'),
                  sg.Button('メトリックの計算',key='-CALC-')]
     col_read_file_lr=[sg.InputText('ファイルを選択', key='-LR-INPUT-TEXT-', enable_events=True, ),
                  sg.FileBrowse('distorted 画像を読み込む', key='-LR-FILE-',target='-LR-INPUT-TEXT-',file_types=(('png', '*.png'),))]
@@ -202,6 +261,12 @@ if __name__=="__main__":
                     dstpath=f'crops/{dirname}.png'
                     get_crop_image(fname,pil_start_point,rect_size).save(dstpath)
             print(f'start:{pil_start_point},width:{rect_size[0]},height:{rect_size[1]}')
+        elif event == '-RESIZE-':
+            if gt_filename and os.path.isfile(gt_filename):
+                r_window=ResizeWindow(gt_filename)
+                r_window.popup()
+                del r_window
+                print('save gt file')
         elif event == '-CALC-':
             with open(metric_result_path,"w") as f:
                 f.write(",PSNR,MS-SSIM,LPIPS\n")
